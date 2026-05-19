@@ -8,3 +8,4 @@
 .cproject
 *.launch
 *.log
+*.claude
