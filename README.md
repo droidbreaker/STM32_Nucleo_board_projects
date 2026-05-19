@@ -8,9 +8,9 @@
 
 </div>
 
-> STM32F446RE "Nucleo-F446RE STM32 Nucleo-64"
+> **STM32F446RE** - Nucleo-64 Development Board
 
-This repository contains hands-on work and examples for the STM32 Nucleo microcontroller.
+This repository contains hands-on work and examples for the STM32F446RE Nucleo microcontroller.
 
 ---
 
@@ -87,12 +87,22 @@ Keypad interface example demonstrating a 4x3 matrix keypad scan routine.
 ## 📁 Project Structure
 
 ```
-STM32_Nucleo_project/
-├── Src/              # Source files
-├── Inc/              # Header files
-├── Startup/          # Startup files
-├── Debug/            # Build output
-└── README.md         # This file
+examples/
+├── HelloWorld/              # Basic hello world example
+├── Add_integer/             # Integer addition example
+├── average1/                # Average calculation
+├── bit_banding_excercise/   # Bit-banding techniques
+├── blink_led_01/            # LED blinking (with HAL)
+├── LED_ON/                  # LED control example
+├── Led_toggle_bitFields/    # LED toggle using bit-fields
+├── Pin_readPA0/             # Pin reading example
+├── keypad_interface101/      # Keypad matrix interface
+├── Size_Of_example/         # Data type sizing example
+├── Src/                     # Common source files
+├── Inc/                     # Common header files
+├── Startup/                 # Startup files
+├── Debug/                   # Build output
+└── README.md                # This file
 ```
 
 ---
