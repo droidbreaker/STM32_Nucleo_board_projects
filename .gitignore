@@ -1,0 +1,10 @@
+.metadata
+.settings
+.vscode
+*.pfd
+.cdproject
+.project
+*.ld
+.cproject
+*.launch
+*.log
