@@ -1,0 +1,7 @@
+../Src/main.c:43:6:undefined_inst	1
+../Src/main.c:56:10:func_div	1
+../Src/main.c:61:5:main	1
+../Src/main.c:81:6:HardFault_Handler	1
+../Src/main.c:87:6:UsageFault_Handler	1
+../Src/main.c:95:6:BusFault_Handler	1
+../Src/main.c:101:6:MemManage_Handler	1
