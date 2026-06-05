@@ -2,6 +2,7 @@
 ../Src/main.c:56:10:func_div	16	static
 ../Src/main.c:61:5:main	16	static
 ../Src/main.c:81:6:HardFault_Handler	8	static
-../Src/main.c:87:6:UsageFault_Handler	16	static
-../Src/main.c:95:6:BusFault_Handler	8	static
-../Src/main.c:101:6:MemManage_Handler	8	static
+../Src/main.c:87:30:UsageFault_Handler	0	static,ignoring_inline_asm
+../Src/main.c:100:6:UsageFault_Handler_c	24	static
+../Src/main.c:117:6:BusFault_Handler	8	static
+../Src/main.c:123:6:MemManage_Handler	8	static
