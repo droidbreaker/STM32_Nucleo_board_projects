@@ -17,12 +17,18 @@
  */
 
 /**
- * WAP to enable configurable fault exception, implementing the fault exception handlers and causing the fault by following method:
- * 1. execute undefined instruction.
- * 2. divide by zero floating point error.
- * 3. executing instruction from peripheral region.
- * 4. Executing SVC inside SVC handler
- * 5. Executing SVC instruction inside interrupt handler whose priority is same or lesser than SVC handler.
+ *
+ * Write a program to execute an SVC instruction from thread mode,
+ * implement the svc handler to print the SVC number used. Also,
+ * increment the SVC number by 4 and return it to the thread mode code
+ * and print it.
+ * Hints :
+ * 1)Write a main() function where you should execute the SVC
+ * instruction with an argument. let's say SVC #0x5
+ * 2)Implement the SVC handler
+ * 3)In the SVC handler extract the SVC number and print it using printf
+ * 4)Increment the SVC number by 4 and return it to the thread mode
+ *
  */
 
 #include <stdint.h>
@@ -32,30 +38,10 @@
   #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 #endif
 
-/**
- * steps for implementing the fault handler:
- * 1. enable all the configurable exception : 1. usage fault, 2. bus fault, 3. mem manage fault
- * 2. implement the fault handlers
- * 3. now force the processor and implement the causes.
- * 4. analyze the fault.
- */
 
-void undefined_inst(void)
+void SVC_instruction(void)
 {
-	 	 uint32_t *pSinst = (uint32_t*)0x20010000;
-	    *pSinst = 0xFFFFFFFF; // invalid opcode.
-	    void (*somefunction) (void);   // function pointer.
-
-	    somefunction  = (void *)0x20010000;        // this will cause T-bit invalid state.
-
-	    somefunction();  // calling the function pointer, which will refer to the address of pSinst.
-
-	    // and here it will cause undefined instruction behavior. and it will trigger usage fault.
-}
-
-uint32_t func_div(uint32_t x, uint32_t y)
-{
-	return (x/y);
+	__asm("SVC #112");
 }
 
 int main(void)
@@ -67,19 +53,48 @@ int main(void)
     *pSHCSR  |= (1 << 17);                      // Bus fault enable
     *pSHCSR  |= (1 << 16);                      // Memory manage fault enable
 
-    /*
-     * If Usage fault is disabled then it will go to the HARDFault exception.
-     *
-     */
 
-    // lets generate undefined instruction.
-    //  undefined_inst();
+    SVC_instruction();
 
-    // lets generate divide by zero.
+    register uint32_t data __asm("r0");      // fetch the r0 data from the Stack Frame, which got populated in  handler mode.
 
-    func_div(10,0);
+    printf("data = %ld \n",data);            // this will give us SVC_number  + 4 .
 
 	for(;;);
+}
+
+__attribute__ ((naked)) void SVC_Handler(void)
+{
+	/*
+	 * Here we have extracted the value of MSP which is the base address
+	 * of the stack frame (thread mode) which is got saved during the exception entry
+	 * from thread mode to handler mode.
+	 *
+	 */
+	__asm ("MRS r0, MSP");
+	__asm ("B SVC_Handler_c");
+
+}
+
+void SVC_Handler_c (uint32_t *pMSP)
+{
+	// how to extract an SVC number from the opcode.
+	printf("In SVC handler mode \n");
+	printf("PC = %lx (return address)\n",pMSP[6]);
+    uint8_t *return_address = (uint8_t *)pMSP[6];
+    printf("return address : %p \n",return_address);
+    // now reduce the return address by 2 to point to the opcode of the SVC instruction in
+    // the program memory.
+    return_address -= 2;
+
+    uint8_t svc_number = *return_address;
+    printf("SVC number = %d \n",svc_number);   // extracted SVC number which is LSB of the opcode.
+
+    // increment the svc_number by 4 and send it into thread mode.
+    svc_number += 4;
+    // now store the data into the r0 register.
+    pMSP[0] = svc_number;         //pMSP[0] = r0 register address.
+
 }
 
 void HardFault_Handler (void)
