@@ -13,6 +13,8 @@ This repository contains hands-on work and examples for the STM32F446RE Nucleo m
 - [LED Blink](#led-blink)
 - [LED Toggle with Bit-Fields](#led-toggle-with-bit-fields)
 - [Keypad Interface 101](#keypad-interface-101)
+- [bit banding excercise](#bit-banding-excercise)
+- []
 
 ---
 
@@ -87,6 +89,43 @@ Keypad interface example demonstrating a 4x3 matrix keypad scan routine.
 
 ---
 
+## bit banding excercise
+
+### overview
+
+bit banding excercise for the extracting the particular bit from the registers.
+
+### Notes
+
+Here we are calculating the alias address with the formula , so that we can get direct address of that bit.
+Calculate the bit band alias address for the given bit band memory address and bit position.
+* Ex: 7th bit position of the memory location 0x20000200 using its alias address
+
+* formula: `Alias_address = alias_base + (32 *(bit_band_memory_addr - bit_band_base))+ bit * 4;` 
+
+here we are using the SRAM address which has only 1MB of bit band memory address region
+and it has 32MB of bit band alias addresses. which is starting from 0x2200000
+
+---
+
+## fault handling debugging
+
+### overview
+
+usage fault, bus fault , mem manage fault exceptions handling via proper handler and debuging the issue what went wrong.
+
+### Note
+
+### steps taken : 
+
+steps for implementing the fault handler:
+ * 1. enable all the configurable exception : 1. usage fault, 2. bus fault, 3. mem manage fault
+ * 2. implement the fault handlers
+ * 3. now force the processor and implement the causes.
+ * 4. analyze the fault.
+
+
+
 ## 📁 Project Structure
 
 ```
@@ -110,4 +149,4 @@ examples/
 
 ---
 
-*Generated for STM32F446RE Nucleo-64*
+
