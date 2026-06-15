@@ -24,30 +24,54 @@
 
 #include <stdio.h>
 #include <stdint.h>
-
+#include "main.h"
 /*Defining macros for the SRAM stacking assessment for private stack for each task */
 
-#define SIZE_TASK_STACK      			1024U                    // 1KB
-#define SIZE_SCHEDULAR_STACK 			1024U                    // 1KB
 
-#define SRAM_START              		0x20000000U                       // starting address of the RAM
-#define SRAM_SIZE              			( (128) * (1024) )                // Total size of SRAM of ARM Cortex M4 processor
-#define SRAM_END						( (SRAM_START)+(SRAM_SIZE) )      // End address of the SRAM
 
-#define TASK1_PRIVATE_STACK_START    		SRAM_END                                // Task1 private stack assigned
-#define TASK2_PRIVATE_STACK_START     		( (SRAM_END) - (1 * SIZE_TASK_STACK) )  // Task2 private stack assigned
-#define TASK3_PRIVATE_STACK_START     		( (SRAM_END) - (2 * SIZE_TASK_STACK) )  // Task3 private stack assigned
-#define TASK4_PRIVATE_STACK_START     		( (SRAM_END) - (3 * SIZE_TASK_STACK) )  // Task4 private stack assigned
-#define SCHEDULAR_PRIVATE_STACK_START     	( (SRAM_END) - (4 * SIZE_TASK_STACK) )  // Schedular private stack assigned
+void task1_handler(void);                     // user tasks handler
+void task2_handler(void);                     // user tasks handler
+void task3_handler(void);                     // user tasks handler
+void task4_handler(void);					  // user tasks handler
 
-void task1_handler(void);
-void task2_handler(void);
-void task3_handler(void);
-void task4_handler(void);
+void SysTick_timer_init(uint32_t);
+
+
+__attribute__((naked)) void schedular_task_init (uint32_t schedular_top_of_stack);
+
+void init_tasks_stack(void);
+
+void enable_processor_faults(void);
+
+
+__attribute__ ((naked))void switch_sp_to_psp(void);
+
+
+uint32_t psp_of_tasks[MAX_TASK] = {TASK1_PRIVATE_STACK_START, TASK2_PRIVATE_STACK_START, TASK3_PRIVATE_STACK_START, TASK4_PRIVATE_STACK_START};
+
+uint32_t tasks_handler[MAX_TASK];
+
+uint8_t current_task = 0;  // task1 address.
 
 int main(void)
 {
+	enable_processor_faults();
+	schedular_task_init(SCHEDULAR_PRIVATE_STACK_START);
+
+	tasks_handler[0] = (uint32_t)task1_handler;       // address of the task1 handler.
+	tasks_handler[1] = (uint32_t)task2_handler;
+	tasks_handler[2] = (uint32_t)task3_handler;
+	tasks_handler[3] = (uint32_t)task4_handler;
+
+	init_tasks_stack();                               // this is to store the dummy context
+
+	SysTick_timer_init(TICK_HZ);
     /* Loop forever */
+
+	switch_sp_to_psp();             				// we need to switch from MSP to PSP in thread mode.
+
+	task1_handler();
+
 	for(;;);
 }
 
@@ -78,3 +102,126 @@ void task4_handler(void)
 		printf(" In Task 4 handler \n");
 	}
 }
+
+void SysTick_timer_init(uint32_t tick_hz)
+{
+	// Systick reload value register address
+	uint32_t *pSys_RVR = (uint32_t *)0xE000E014;
+	uint32_t *pSys_CntrlR = (uint32_t *)0xE000E010; // CSR register
+	*pSys_RVR &= ~(0x00FFFFFF);  // clear the SRVR register.
+
+	// calculate count value
+	uint32_t count_value = (SYSTICK_TIM_CLK/ tick_hz)-1;
+
+	// load the value into SysRVR register
+	*pSys_RVR |= count_value;
+
+	// settings
+	*pSys_CntrlR |= (1 << 1); // Enables SysTick exception request
+	*pSys_CntrlR |= (1 << 2); // Indicates the clock source
+
+	// Enables the counter
+	*pSys_CntrlR |= (1 << 0); // Enables the counter.
+
+}
+
+__attribute__((naked)) void schedular_task_init (uint32_t schedular_top_of_stack)
+{
+	__asm volatile ("MSR MSP,%0": : "r" ("schedular_top_of_stack") :  );  // using naked function to initialize the stack frame with the starting address of the private stack frame using MSP
+	__asm volatile ("BX LR");                                             // this is branch indirect to the function call.
+}
+
+void init_tasks_stack(void)                  // dummy stack frame value for the first time task running.
+{
+	uint32_t *pPSP;
+	// SF1 + SF2
+	for(int i = 0 ; i < MAX_TASK ; i++)
+	{
+		pPSP = (uint32_t *)psp_of_tasks[i];
+
+		pPSP--;                       // decrement the address store the XPSR value
+		*pPSP = DUMMY_XPSR;           // 0x00100000  the 24th bit should be 1 because of 'T'-bit is always '1'. EPSR register.
+
+		pPSP--;                       // decrement the address store the PC value
+		*pPSP = tasks_handler[i];      // based on task1, task2, task3, task4.
+
+		pPSP--;                       // decrement the address store the LR value
+		*pPSP = 0xFFFFFFFD;           // for return to PSP
+
+		for(int j = 0 ; i < 13 ; j++)   // for R0 to R12 value store.
+		{
+				pPSP--;                       // decrement the address
+				*pPSP = 0;
+		}
+		psp_of_tasks[i] = (uint32_t)pPSP;
+	}
+
+}
+
+uint32_t get_psp_value(void)
+{
+
+	return psp_of_tasks[current_task];
+}
+
+// we need to make the switching of SP to PSP as naked function.
+__attribute__ ((naked))void switch_sp_to_psp(void)
+{
+	// 1. initialize the PSP with TASK1 stack start address
+
+    // get the value of PSP of current_task
+	__asm volatile ("PUSH {LR}");                 // preserve LR which connects back to the main() function.
+	__asm volatile ("BL get_psp_value");          // branch with link to function.
+	__asm volatile ("MSR PSP,R0");                // initialize PSP
+	__asm volatile ("POP {LR}");                  // Pops back LR value.
+
+	// 2. change SP to PSP using CONTROL REGISTER.
+	__asm volatile ("MOV R0,#0x02");          // 2nd  bit is set
+	__asm volatile ("MSR CONTROL,R0");        // control register SPSEL 2nd bit is set to 1 it will use PSP then.
+	__asm volatile ("BX LR");
+
+}
+
+void SysTick_Handler (void)
+{
+	printf("in SysTick Handler \n");
+}
+
+void enable_processor_faults(void)
+{
+
+    uint32_t *pSHCSR = (uint32_t*)0xE000ED24;   // system handler control and status register.
+
+    *pSHCSR  |= (1 << 18);                      // usage fault enable
+    *pSHCSR  |= (1 << 17);                      // Bus fault enable
+    *pSHCSR  |= (1 << 16);                      // Memory manage fault enable
+
+
+}
+
+// implement fault handlers.
+void HardFault_Handler (void)
+{
+        printf("in HardFault Handler \n");
+        while(1);
+}
+
+void UsageFault_Handler (void)
+{
+        printf("in UsageFault Handler \n");
+        while(1);
+}
+
+void BusFault_Handler (void)
+{
+        printf("in BusFault Handler \n");
+        while(1);
+}
+
+void MemManage_Handler (void)
+{
+        printf("in MemManageFault Handler \n");
+        while(1);
+}
+
+

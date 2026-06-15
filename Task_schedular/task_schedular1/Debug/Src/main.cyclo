@@ -1,0 +1,16 @@
+../Src/main.c:56:5:main	1
+../Src/main.c:78:6:task1_handler	1
+../Src/main.c:85:6:task2_handler	1
+../Src/main.c:92:6:task3_handler	1
+../Src/main.c:99:6:task4_handler	1
+../Src/main.c:106:6:SysTick_timer_init	1
+../Src/main.c:128:29:schedular_task_init	1
+../Src/main.c:134:6:init_tasks_stack	3
+../Src/main.c:161:10:get_psp_value	1
+../Src/main.c:168:29:switch_sp_to_psp	1
+../Src/main.c:185:6:SysTick_Handler	1
+../Src/main.c:190:6:enable_processor_faults	1
+../Src/main.c:203:6:HardFault_Handler	1
+../Src/main.c:209:6:UsageFault_Handler	1
+../Src/main.c:215:6:BusFault_Handler	1
+../Src/main.c:221:6:MemManage_Handler	1
