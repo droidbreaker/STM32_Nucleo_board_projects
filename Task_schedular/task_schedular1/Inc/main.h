@@ -5,9 +5,12 @@
  *      Author: brak3r
  */
 
+
 #ifndef MAIN_H_
 #define MAIN_H_
+#include <stdint.h>
 
+/*Defining macros for the SRAM stacking assessment for private stack for each task */
 #define MAX_TASK	4
 #define DUMMY_XPSR 	0x01000000U      //24th bit is set to 1. T bit setting always 1. as XPSR dummy value.
 

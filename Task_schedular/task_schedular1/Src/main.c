@@ -16,8 +16,6 @@
  ******************************************************************************
  */
 
-#include <stdint.h>
-
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
   #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 #endif
@@ -25,7 +23,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include "main.h"
-/*Defining macros for the SRAM stacking assessment for private stack for each task */
+
 
 
 
@@ -45,6 +43,9 @@ void enable_processor_faults(void);
 
 
 __attribute__ ((naked))void switch_sp_to_psp(void);
+void save_psp_value(uint32_t current_psp_value);
+__attribute__ ((naked))void SysTick_Handler (void);
+uint32_t get_psp_value(void);
 
 
 uint32_t psp_of_tasks[MAX_TASK] = {TASK1_PRIVATE_STACK_START, TASK2_PRIVATE_STACK_START, TASK3_PRIVATE_STACK_START, TASK4_PRIVATE_STACK_START};
@@ -52,6 +53,7 @@ uint32_t psp_of_tasks[MAX_TASK] = {TASK1_PRIVATE_STACK_START, TASK2_PRIVATE_STAC
 uint32_t tasks_handler[MAX_TASK];
 
 uint8_t current_task = 0;  // task1 address.
+
 
 int main(void)
 {
@@ -127,7 +129,7 @@ void SysTick_timer_init(uint32_t tick_hz)
 
 __attribute__((naked)) void schedular_task_init (uint32_t schedular_top_of_stack)
 {
-	__asm volatile ("MSR MSP,%0": : "r" ("schedular_top_of_stack") :  );  // using naked function to initialize the stack frame with the starting address of the private stack frame using MSP
+	__asm volatile ("MSR MSP,%0": : "r" (schedular_top_of_stack) :  );    // using naked function to initialize the stack frame with the starting address of the private stack frame using MSP
 	__asm volatile ("BX LR");                                             // this is branch indirect to the function call.
 }
 
@@ -140,7 +142,7 @@ void init_tasks_stack(void)                  // dummy stack frame value for the 
 		pPSP = (uint32_t *)psp_of_tasks[i];
 
 		pPSP--;                       // decrement the address store the XPSR value
-		*pPSP = DUMMY_XPSR;           // 0x00100000  the 24th bit should be 1 because of 'T'-bit is always '1'. EPSR register.
+		*pPSP = DUMMY_XPSR;           // 0x01000000  the 24th bit should be 1 because of 'T'-bit is always '1'. EPSR register.
 
 		pPSP--;                       // decrement the address store the PC value
 		*pPSP = tasks_handler[i];      // based on task1, task2, task3, task4.
@@ -148,7 +150,7 @@ void init_tasks_stack(void)                  // dummy stack frame value for the 
 		pPSP--;                       // decrement the address store the LR value
 		*pPSP = 0xFFFFFFFD;           // for return to PSP
 
-		for(int j = 0 ; i < 13 ; j++)   // for R0 to R12 value store.
+		for(int j = 0 ; j < 13 ; j++)   // for R12 to R0 value store.
 		{
 				pPSP--;                       // decrement the address
 				*pPSP = 0;
@@ -164,17 +166,31 @@ uint32_t get_psp_value(void)
 	return psp_of_tasks[current_task];
 }
 
+void save_psp_value(uint32_t current_psp_value)
+{
+	psp_of_tasks[current_task] = current_psp_value;
+}
+
+void update_next_task(void)
+{
+	current_task++;                     // incrementing the task number.
+	current_task %= MAX_TASK;           // so it will go into round-robin manner. from 0-3.
+}
+
 // we need to make the switching of SP to PSP as naked function.
 __attribute__ ((naked))void switch_sp_to_psp(void)
 {
 	// 1. initialize the PSP with TASK1 stack start address
-
+    // to avoid LR to get corrupted we have to PUSH LR and POP LR
     // get the value of PSP of current_task
+	__asm volatile ("MRS R1, MSP");               // checking MSP value and move it to R1.
 	__asm volatile ("PUSH {LR}");                 // preserve LR which connects back to the main() function.
-	__asm volatile ("BL get_psp_value");          // branch with link to function.
+	__asm volatile ("BL get_psp_value");          // branch with link to function of get_psp_value().
 	__asm volatile ("MSR PSP,R0");                // initialize PSP
-	__asm volatile ("POP {LR}");                  // Pops back LR value.
-
+	__asm volatile ("MRS R2, MSP");               // moving MSP value to R2
+	__asm volatile ("LDR R3, [R2]");
+	__asm volatile ("POP {LR}");    			  // Pops back LR value.
+	__asm volatile ("MRS R4, MSP");
 	// 2. change SP to PSP using CONTROL REGISTER.
 	__asm volatile ("MOV R0,#0x02");          // 2nd  bit is set
 	__asm volatile ("MSR CONTROL,R0");        // control register SPSEL 2nd bit is set to 1 it will use PSP then.
@@ -182,9 +198,37 @@ __attribute__ ((naked))void switch_sp_to_psp(void)
 
 }
 
-void SysTick_Handler (void)
+__attribute__ ((naked))void SysTick_Handler (void)    // To do context switch without PendSV 1st scenario.
 {
-	printf("in SysTick Handler \n");
+	// to make it naked function so that compiler will not generate any epilogue.
+
+	// Save the current task context
+
+	// 1. Get current running task's PSP value.
+	__asm volatile ("MRS R0,PSP");                      // get the PSP value to R0.
+	// 2. using that PSP value store SF2 (R4-R11).
+	__asm volatile ("STMDB R0!,{R4-R11}");                             // Handler mode it uses MSP.
+	// STMDB (Decrement address and store the register value.)
+
+	__asm volatile ("PUSH {LR}");                  // to save LR value so that it wont get corrupted.
+ 	// 3. Save the current value of PSP
+	__asm volatile ("BL save_psp_value");
+
+	// retrieve the context of next task.
+
+	// 1. Decide the next task
+	__asm volatile ("BL update_next_task");
+	// 2. get its past PSP value.
+	__asm volatile ("BL get_psp_value");
+	// 3. Using that PSP value retrieve the SF2 (R4-R11) , because others are getting automatically retrieved.
+	__asm volatile ("LDMIA R0!,{R4-R11}");
+	// LDMIA (Load Register value and Increment the Address)
+	// 4. Update the PSP and Exit.
+	__asm volatile ("MSR PSP,R0");  // store R0 value to PSP.
+
+	__asm volatile ("POP {LR}");
+	__asm volatile ("BX LR");
+
 }
 
 void enable_processor_faults(void)
@@ -195,7 +239,6 @@ void enable_processor_faults(void)
     *pSHCSR  |= (1 << 18);                      // usage fault enable
     *pSHCSR  |= (1 << 17);                      // Bus fault enable
     *pSHCSR  |= (1 << 16);                      // Memory manage fault enable
-
 
 }
 
