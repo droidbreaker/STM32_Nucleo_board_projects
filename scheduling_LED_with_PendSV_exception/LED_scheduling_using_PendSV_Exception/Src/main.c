@@ -32,7 +32,7 @@ void task1_handler(void);                     // user tasks handler
 void task2_handler(void);                     // user tasks handler
 void task3_handler(void);                     // user tasks handler
 void task4_handler(void);					  // user tasks handler
-
+void idle_task_handler(void);                         // idle task handler
 void SysTick_timer_init(uint32_t);
 
 
@@ -45,33 +45,37 @@ void enable_processor_faults(void);
 
 __attribute__ ((naked))void switch_sp_to_psp(void);
 void save_psp_value(uint32_t current_psp_value);
-__attribute__ ((naked))void SysTick_Handler (void);
+void SysTick_Handler (void);
 uint32_t get_psp_value(void);
 
+void task_delay(uint32_t tick_count);
+void update_global_tick_count(void);
+void unblock_task(void);
+void schedule(void);
 
-uint32_t psp_of_tasks[MAX_TASK] = {TASK1_PRIVATE_STACK_START, TASK2_PRIVATE_STACK_START, TASK3_PRIVATE_STACK_START, TASK4_PRIVATE_STACK_START};
+uint8_t current_task = 1;  // task1 address.
+uint32_t g_tick_count = 0;
 
-uint32_t tasks_handler[MAX_TASK];
+typedef struct{
+	uint32_t psp_value;           // to store tasks psp value
+	uint32_t block_count;         // to store blocking counter ticks
+	uint8_t current_state;        // to store current state, Ready or Blocking.
+	void (*task_handler)(void);   // function pointer for task handler from Idle , task1 - task4.
+}TCB_t;                                    // Task Control Block.
 
-uint8_t current_task = 0;  // task1 address.
-
+TCB_t user_task[MAX_TASK];
 
 int main(void)
 {
 	enable_processor_faults();
-	schedular_task_init(SCHEDULAR_PRIVATE_STACK_START);
 
-	tasks_handler[0] = (uint32_t)task1_handler;       // address of the task1 handler.
-	tasks_handler[1] = (uint32_t)task2_handler;
-	tasks_handler[2] = (uint32_t)task3_handler;
-	tasks_handler[3] = (uint32_t)task4_handler;
+	schedular_task_init(SCHEDULAR_PRIVATE_STACK_START);
 
 	init_tasks_stack();                               // this is to store the dummy context
 
 	LED_Init();                               // initializing LED
 
 	SysTick_timer_init(TICK_HZ);
-    /* Loop forever */
 
 	switch_sp_to_psp();             				// we need to switch from MSP to PSP in thread mode.
 
@@ -80,13 +84,18 @@ int main(void)
 	for(;;);
 }
 
+void idle_task_handler(void)
+{
+	while(1);
+}
+
 void task1_handler(void)
 {
 	while(1){
 		led_on(LED_GREEN);
-		delay(DELAY_COUNT_1S);
+		task_delay(1000);
 		led_off(LED_GREEN);
-		delay(DELAY_COUNT_1S);
+		task_delay(1000);
 	}
 }
 
@@ -94,9 +103,9 @@ void task2_handler(void)
 {
 	while(1){
 		led_on(LED_BLUE);
-		delay(DELAY_COUNT_500MS);
+		task_delay(500);
 		led_off(LED_BLUE);
-		delay(DELAY_COUNT_500MS);
+		task_delay(500);
 	}
 }
 
@@ -104,9 +113,9 @@ void task3_handler(void)
 {
 	while(1){
 		led_on(LED_RED);
-		delay(DELAY_COUNT_250MS);
+		task_delay(250);
 		led_off(LED_RED);
-		delay(DELAY_COUNT_250MS);
+		task_delay(250);
 	}
 }
 
@@ -114,9 +123,9 @@ void task4_handler(void)
 {
 	while(1){
 		led_on(LED_GREEN1);
-		delay(DELAY_COUNT_125MS);
+		task_delay(125);
 		led_off(LED_GREEN1);
-		delay(DELAY_COUNT_125MS);
+		task_delay(125);
 	}
 }
 
@@ -150,27 +159,46 @@ __attribute__((naked)) void schedular_task_init (uint32_t schedular_top_of_stack
 
 void init_tasks_stack(void)                  // dummy stack frame value for the first time task running.
 {
+
+	user_task[0].current_state = TASK_READY_STATE;
+	user_task[1].current_state = TASK_READY_STATE;
+	user_task[2].current_state = TASK_READY_STATE;
+	user_task[3].current_state = TASK_READY_STATE;
+	user_task[4].current_state = TASK_READY_STATE;
+
+	user_task[0].psp_value = IDLE_PRIVATE_STACK_START;
+	user_task[1].psp_value = TASK1_PRIVATE_STACK_START;
+	user_task[2].psp_value = TASK2_PRIVATE_STACK_START;
+	user_task[3].psp_value = TASK3_PRIVATE_STACK_START;
+	user_task[4].psp_value = TASK4_PRIVATE_STACK_START;
+
+	user_task[0].task_handler = idle_task_handler;
+	user_task[1].task_handler = task1_handler;
+	user_task[2].task_handler = task2_handler;
+	user_task[3].task_handler = task3_handler;
+	user_task[4].task_handler = task4_handler;
+
 	uint32_t *pPSP;
 	// SF1 + SF2
 	for(int i = 0 ; i < MAX_TASK ; i++)
 	{
-		pPSP = (uint32_t *)psp_of_tasks[i];
+		pPSP = (uint32_t *)user_task[i].psp_value;
 
-		pPSP--;                       // decrement the address store the XPSR value
-		*pPSP = DUMMY_XPSR;           // 0x01000000  the 24th bit should be 1 because of 'T'-bit is always '1'. EPSR register.
+		pPSP--;                       				// decrement the address store the XPSR value
+		*pPSP = DUMMY_XPSR;           				// 0x01000000  the 24th bit should be 1 because of 'T'-bit is always '1'. EPSR register.
 
-		pPSP--;                       // decrement the address store the PC value
-		*pPSP = tasks_handler[i];      // based on task1, task2, task3, task4.
+		pPSP--;                       				// decrement the address store the PC value
+		*pPSP = (uint32_t)user_task[i].task_handler;      	// based on task1, task2, task3, task4.
 
-		pPSP--;                       // decrement the address store the LR value
-		*pPSP = 0xFFFFFFFD;           // for return to PSP
+		pPSP--;                       				// decrement the address store the LR value
+		*pPSP = 0xFFFFFFFD;           				// for return to PSP
 
-		for(int j = 0 ; j < 13 ; j++)   // for R12 to R0 value store.
+		for(int j = 0 ; j < 13 ; j++)  				// for R12 to R0 value store.
 		{
-				pPSP--;                       // decrement the address
+				pPSP--;                       		// decrement the address
 				*pPSP = 0;
 		}
-		psp_of_tasks[i] = (uint32_t)pPSP;
+		user_task[i].psp_value = (uint32_t)pPSP;
 	}
 
 }
@@ -178,18 +206,32 @@ void init_tasks_stack(void)                  // dummy stack frame value for the 
 uint32_t get_psp_value(void)
 {
 
-	return psp_of_tasks[current_task];
+	return user_task[current_task].psp_value;
 }
 
 void save_psp_value(uint32_t current_psp_value)
 {
-	psp_of_tasks[current_task] = current_psp_value;
+	user_task[current_task].psp_value = current_psp_value;
 }
 
 void update_next_task(void)
 {
+	int state = TASK_BLOCK_STATE;
+
+	for(int i = 0; i< MAX_TASK ; i++)
+	{
 	current_task++;                     // incrementing the task number.
 	current_task %= MAX_TASK;           // so it will go into round-robin manner. from 0-3.
+    state = user_task[current_task].current_state;
+    	if((state == TASK_READY_STATE) && (current_task != 0))
+    	{
+    		break;
+    	}
+	}
+	if(state != TASK_READY_STATE)
+	{
+		current_task = 0;
+	}
 }
 
 // we need to make the switching of SP to PSP as naked function.
@@ -213,37 +255,87 @@ __attribute__ ((naked))void switch_sp_to_psp(void)
 
 }
 
-__attribute__ ((naked))void SysTick_Handler (void)    // To do context switch without PendSV 1st scenario.
+__attribute__ ((naked))void PendSV_Handler (void)
 {
 	// to make it naked function so that compiler will not generate any epilogue.
 
-	// Save the current task context
+		// Save the current task context
 
-	// 1. Get current running task's PSP value.
-	__asm volatile ("MRS R0,PSP");                      // get the PSP value to R0.
-	// 2. using that PSP value store SF2 (R4-R11).
-	__asm volatile ("STMDB R0!,{R4-R11}");                             // Handler mode it uses MSP.
-	// STMDB (Decrement address and store the register value.)
+		// 1. Get current running task's PSP value.
+		__asm volatile ("MRS R0,PSP");                      // get the PSP value to R0.
+		// 2. using that PSP value store SF2 (R4-R11).
+		__asm volatile ("STMDB R0!,{R4-R11}");                             // Handler mode it uses MSP.
+		// STMDB (Decrement address and store the register value.)
 
-	__asm volatile ("PUSH {LR}");                  // to save LR value so that it wont get corrupted.
- 	// 3. Save the current value of PSP
-	__asm volatile ("BL save_psp_value");
+		__asm volatile ("PUSH {LR}");                  // to save LR value so that it wont get corrupted.
+	 	// 3. Save the current value of PSP
+		__asm volatile ("BL save_psp_value");
 
-	// retrieve the context of next task.
+		// retrieve the context of next task.
 
-	// 1. Decide the next task
-	__asm volatile ("BL update_next_task");
-	// 2. get its past PSP value.
-	__asm volatile ("BL get_psp_value");
-	// 3. Using that PSP value retrieve the SF2 (R4-R11) , because others are getting automatically retrieved.
-	__asm volatile ("LDMIA R0!,{R4-R11}");
-	// LDMIA (Load Register value and Increment the Address)
-	// 4. Update the PSP and Exit.
-	__asm volatile ("MSR PSP,R0");  // store R0 value to PSP.
+		// 1. Decide the next task
+		__asm volatile ("BL update_next_task");
+		// 2. get its past PSP value.
+		__asm volatile ("BL get_psp_value");
+		// 3. Using that PSP value retrieve the SF2 (R4-R11) , because others are getting automatically retrieved.
+		__asm volatile ("LDMIA R0!,{R4-R11}");
+		// LDMIA (Load Register value and Increment the Address)
+		// 4. Update the PSP and Exit.
+		__asm volatile ("MSR PSP,R0");  // store R0 value to PSP.
 
-	__asm volatile ("POP {LR}");
-	__asm volatile ("BX LR");
+		__asm volatile ("POP {LR}");
+		__asm volatile ("BX LR");
+}
 
+void update_global_tick_count(void){
+	g_tick_count++;
+}
+
+void unblock_task(void)
+{
+	for(int i =1; i< MAX_TASK; i++)
+	{
+		if(user_task[i].current_state != TASK_READY_STATE)
+		{
+			if(user_task[i].block_count == g_tick_count)
+			{
+				user_task[i].current_state = TASK_READY_STATE;
+			}
+		}
+	}
+}
+
+void SysTick_Handler (void)    // now using PendSV exception.
+{
+	update_global_tick_count();
+	unblock_task();
+	//Pend the PENDSV Exception.
+	uint32_t *pICSR = (uint32_t*)0xE000ED04;
+	*pICSR |= (1U << 28);              // 28th bit should be set in ICSR register to enable PendSV.
+
+
+}
+
+void schedule(void)
+{
+	uint32_t *pICSR = (uint32_t*)0xE000ED04;
+	*pICSR |= (1U << 28);
+}
+
+void task_delay(uint32_t tick_count)
+{
+	// disable interrupts before shared global variable which is shared between handler and threads.
+    // we can use PRIMASK.
+
+	INTERRUPT_DISABLE();
+	if (current_task)
+	{
+	user_task[current_task].block_count = g_tick_count + tick_count;
+	user_task[current_task].current_state = TASK_BLOCK_STATE;
+	schedule();
+	}
+	//enable interrupts
+	INTERRUPT_ENABLE();
 }
 
 void enable_processor_faults(void)
