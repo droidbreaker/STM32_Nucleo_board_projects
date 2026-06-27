@@ -14,7 +14,13 @@ This repository contains hands-on work and examples for the STM32F446RE Nucleo m
 - [LED Toggle with Bit-Fields](#led-toggle-with-bit-fields)
 - [Keypad Interface 101](#keypad-interface-101)
 - [bit banding excercise](#bit-banding-excercise)
-- []
+- [fault handling debugging](#fault-handling-debugging)
+- [system exception experiment](#system-exception-experiment)
+- [SVC handler operations excercise](#svc-handler-operations-excercise)
+- [task schedular](#task-scheduler)
+- [scheduling toggle LED](#scheduling-toggle-led)
+- [scheduling toggle LED with PendSV exception](#scheduling-toggle-LED-with-PendSV-exception)
+
 
 ---
 
@@ -49,11 +55,6 @@ GPIOA_1 |= (1<<5);  // if the LED is on 5th bit
 GPIOA_1 &= ~(1<<5); // if the LED is ON then it will be Turning OFF by this logic
 ```
 
----
-
-### ⚠️ Work In Progress
-
-> USE PROPER DELAY — prefer a hardware timer or the HAL delay APIs instead of busy-wait loops.
 
 ---
 
@@ -124,28 +125,115 @@ steps for implementing the fault handler:
  * 3. now force the processor and implement the causes.
  * 4. analyze the fault.
 
+---
+## system exception experiment
 
+### Overview
 
-## 📁 Project Structure
+This project demonstrates how to trigger an SVC exception from thread mode, handle it in the SVC handler, and return modified data to the calling code. It also enables configurable fault exceptions so the handler flow can be observed.
 
-```
-examples/
-├── HelloWorld/              # Basic hello world example
-├── Add_integer/             # Integer addition example
-├── average1/                # Average calculation
-├── bit_banding_excercise/   # Bit-banding techniques
-├── blink_led_01/            # LED blinking (with HAL)
-├── LED_ON/                  # LED control example
-├── Led_toggle_bitFields/    # LED toggle using bit-fields
-├── Pin_readPA0/             # Pin reading example
-├── keypad_interface101/      # Keypad matrix interface
-├── Size_Of_example/         # Data type sizing example
-├── Src/                     # Common source files
-├── Inc/                     # Common header files
-├── Startup/                 # Startup files
-├── Debug/                   # Build output
-└── README.md                # This file
-```
+### Notes
+
+- Uses an SVC instruction from the main program to enter handler mode.
+- Extracts the SVC number from the stacked return address by inspecting the instruction opcode.
+- Increments the extracted value and writes it back to the saved R0 register value.
+- Enables Usage Fault, Bus Fault, and MemManage Fault in the System Handler Control and Status Register.
+
+### Steps Taken
+
+1. Write a function that executes an SVC instruction from thread mode.
+2. Implement the SVC handler and its C support function to inspect the saved stack frame.
+3. Decode the SVC number from the return address and increment it by 4.
+4. Store the updated value back into the R0 slot of the stack frame.
+5. Print the result in the main program to verify the exception-handling flow.
+
+---
+
+## SVC handler operations excercise
+
+### Overview
+
+This project uses supervisor calls to perform arithmetic operations from handler mode and return the result to the calling function.
+
+### Notes
+
+- Each arithmetic helper function issues a different SVC number.
+- The SVC handler decodes the request and performs the corresponding operation.
+- The result is returned by writing it back into the saved R0 value in the stack frame.
+
+### Steps Taken
+
+1. Create helper functions for addition, subtraction, multiplication, and division that trigger distinct SVC instructions.
+2. Implement the SVC handler to extract the SVC number from the instruction address.
+3. Use a switch statement to select the correct arithmetic operation.
+4. Read the operands from the saved stack frame and compute the result.
+5. Store the result back so the calling function can print it.
+
+---
+
+## task schedular
+
+### Overview
+
+This project implements a simple cooperative scheduler using SysTick and process stack pointer switching for multiple tasks.
+
+### Notes
+
+- Initializes dummy exception context for each task stack.
+- Switches from MSP to PSP in thread mode for task execution.
+- Uses round-robin scheduling to rotate between tasks.
+
+### Steps Taken
+
+1. Define multiple task handlers for different tasks.
+2. Allocate private stack regions and initialize each task's dummy stack frame.
+3. Configure SysTick to generate periodic interrupts.
+4. Switch the processor to use PSP for thread-mode execution.
+5. Save and restore task context during each timer interrupt.
+
+---
+
+## scheduling toggle LED
+
+### Overview
+
+This project extends the scheduler concept to toggle different LEDs while switching between multiple tasks.
+
+### Notes
+
+- Each task controls a different LED.
+- The tasks blink at different rates to demonstrate preemptive-style scheduling.
+- The scheduler preserves context while switching between tasks.
+
+### Steps Taken
+
+1. Initialize the LED hardware and task stack areas.
+2. Register task handlers for the LED tasks.
+3. Configure SysTick for periodic task switching.
+4. Use PSP-based context switching to run the tasks.
+5. Observe the LED blinking pattern as the scheduler rotates between tasks.
+
+---
+
+## scheduling toggle LED with PendSV exception
+
+### Overview
+
+This project demonstrates a task scheduler that uses PendSV for context switching and a task control block to manage task state and stack pointers.
+
+### Notes
+
+- Uses a TCB structure to track each task's PSP and state.
+- Supports blocking delays so tasks can wait before becoming runnable again.
+- Performs the actual context switch inside the PendSV handler.
+
+### Steps Taken
+
+1. Create a task control block for each task and store its PSP and state.
+2. Initialize each task's stack with a dummy exception frame and task entry address.
+3. Configure SysTick and enable processor faults.
+4. Implement the PendSV handler to save and restore task context.
+5. Add delay and scheduling logic so blocked tasks are skipped until they become ready again.
 
 ---
 
