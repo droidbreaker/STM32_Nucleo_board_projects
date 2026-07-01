@@ -223,7 +223,7 @@ g_pfnVectors:
   .word	DCMI_IRQHandler              			/* DCMI global interrupt                                              */
   .word	0                            			/* Reserved                                                           */
   .word	0                            			/* Reserved                                                           */
-  .word	FPU_IRQHandler                          /* FPU global interrupt                                               */
+  .word	0                            			/* Reserved                                                           */
   .word	0                            			/* Reserved                                                           */
   .word	0                            			/* Reserved                                                           */
   .word	SPI4_IRQHandler              			/* SPI 4 global interrupt                                             */
