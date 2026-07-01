@@ -27,7 +27,7 @@
 
 
 
-
+extern void initialise_monitor_handles(void);  // this is to enable the printf() output on the terminal.
 void task1_handler(void);                     // user tasks handler
 void task2_handler(void);                     // user tasks handler
 void task3_handler(void);                     // user tasks handler
@@ -41,7 +41,6 @@ __attribute__((naked)) void schedular_task_init (uint32_t schedular_top_of_stack
 void init_tasks_stack(void);
 
 void enable_processor_faults(void);
-
 
 __attribute__ ((naked))void switch_sp_to_psp(void);
 void save_psp_value(uint32_t current_psp_value);
@@ -68,8 +67,10 @@ TCB_t user_task[MAX_TASK];
 int main(void)
 {
 	enable_processor_faults();
-
+	initialise_monitor_handles();                 // this is to enable the printf() output on the terminal.
 	schedular_task_init(SCHEDULAR_PRIVATE_STACK_START);
+
+	printf("initializing the tasks stack \n");
 
 	init_tasks_stack();                               // this is to store the dummy context
 
@@ -92,6 +93,7 @@ void idle_task_handler(void)
 void task1_handler(void)
 {
 	while(1){
+		printf("in task1_handler \n");
 		led_on(LED_GREEN);
 		task_delay(1000);
 		led_off(LED_GREEN);
@@ -102,6 +104,7 @@ void task1_handler(void)
 void task2_handler(void)
 {
 	while(1){
+		printf("in task2_handler \n");
 		led_on(LED_BLUE);
 		task_delay(500);
 		led_off(LED_BLUE);
@@ -112,6 +115,7 @@ void task2_handler(void)
 void task3_handler(void)
 {
 	while(1){
+		printf("in task3_handler \n");
 		led_on(LED_RED);
 		task_delay(250);
 		led_off(LED_RED);
@@ -122,6 +126,7 @@ void task3_handler(void)
 void task4_handler(void)
 {
 	while(1){
+		printf("in task4_handler \n");
 		led_on(LED_GREEN1);
 		task_delay(125);
 		led_off(LED_GREEN1);
@@ -364,13 +369,13 @@ void UsageFault_Handler (void)
 
 void BusFault_Handler (void)
 {
-      //  printf("in BusFault Handler \n");
+        printf("in BusFault Handler \n");
         while(1);
 }
 
 void MemManage_Handler (void)
 {
-       // printf("in MemManageFault Handler \n");
+        printf("in MemManageFault Handler \n");
         while(1);
 }
 
